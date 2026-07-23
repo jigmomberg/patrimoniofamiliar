@@ -450,4 +450,544 @@
     z-index:1;
   }
   .auth-box h2{margin:0 0 4px 0;font-size:20px;color:var(--ocean);}
-  .auth-box p{color:var(--muted);font-size:13px;margin:0 0 18px
+  .auth-box p{color:var(--muted);font-size:13px;margin:0 0 18px 0;font-weight:600;}
+  .auth-box input{
+    width:100%;
+    background:#fff8e6;
+    border:2px solid var(--border);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:10px;
+    font-size:14px;
+    font-family:'Nunito',sans-serif;
+    margin-bottom:10px;
+  }
+  .auth-box input:focus{outline:none;border-color:var(--ocean-light);}
+  .auth-box button.primary{
+    width:100%;
+    padding:10px;
+    margin-top:4px;
+    background:linear-gradient(90deg,var(--hibiscus),var(--coral));
+    color:#fff;
+    border:none;
+  }
+  .auth-error{color:var(--coral);font-size:12px;min-height:16px;margin-top:10px;font-weight:700;}
+  .auth-loading{color:#fff;font-weight:800;font-size:16px;text-shadow:0 2px 6px rgba(0,0,0,0.3);}
+  #logoutBtn{margin-left:auto;}
+  .header-top{display:flex; align-items:flex-start; justify-content:space-between; width:100%; gap:12px;}
+</style>
+</head>
+<body>
+
+<div class="sun"></div>
+<div class="cloud c1">☁️</div>
+<div class="cloud c2">☁️</div>
+<div class="cloud c3">☁️</div>
+<div class="palm p1">🌴</div>
+<div class="palm p2">🌴</div>
+<div class="waves">
+  <svg viewBox="0 0 1600 120" preserveAspectRatio="none" class="wave1">
+    <path d="M0,60 C200,110 400,10 600,60 C800,110 1000,10 1200,60 C1400,110 1600,10 1800,60 L1800,120 L0,120 Z" fill="#0a6e73" opacity="0.65"></path>
+  </svg>
+  <svg viewBox="0 0 1600 120" preserveAspectRatio="none" class="wave2">
+    <path d="M0,70 C200,20 400,120 600,70 C800,20 1000,120 1200,70 C1400,20 1600,120 1800,70 L1800,120 L0,120 Z" fill="#17b8a6" opacity="0.6"></path>
+  </svg>
+</div>
+
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-loading" id="authLoading">Cargando... 🌊</div>
+  <div class="auth-box" id="authBox" style="display:none;">
+    <h2>🏄 ¡Hola de nuevo!</h2>
+    <p>Entra con tu cuenta para ver el patrimonio</p>
+    <input type="email" id="authEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="authPassword" placeholder="Clave" autocomplete="current-password">
+    <button class="primary" id="authLoginBtn">Entrar</button>
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
+<div class="wrap" id="mainApp" style="display:none;">
+
+  <header>
+    <div class="header-top">
+      <div>
+        <h1 id="appTitle" contenteditable="true" spellcheck="false">🏄 Patrimonio Familiar 🤙</h1>
+        <div class="subtitle">Rema fuerte — toca cualquier campo para editarlo ✍️, se guarda solo 🌊</div>
+      </div>
+      <button id="logoutBtn">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <div id="dataError" style="display:none; background:#fff0ee; border:2px solid var(--coral); color:#8a2b23; border-radius:14px; padding:12px 16px; margin-bottom:16px; font-weight:700; font-size:13px;"></div>
+
+  <div class="hero">
+    <div class="hero-total">
+      <div class="label">💰 Patrimonio total</div>
+      <div class="value" id="grandTotal">$0</div>
+      <div class="hero-updated" id="lastUpdated">Sin actualizaciones aún</div>
+    </div>
+    <div class="lifering">
+      <div class="lifering-inner">
+        <div class="chart-box"><canvas id="pieChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="goal-box">
+    <div class="goal-header">
+      <span class="goal-label">🎯 Meta: <span id="goalAmount" contenteditable="true" spellcheck="false">$300.000.000</span></span>
+      <span class="goal-pct" id="goalPct">0%</span>
+    </div>
+    <div class="goal-track-wrap">
+      <div class="goal-boat" id="goalBoat" style="left:0%;">🏄</div>
+      <div class="goal-track">
+        <span class="goal-start">🏄‍♂️</span>
+        <div class="goal-fill" id="goalFill"></div>
+        <span class="goal-flag">🌺🏁</span>
+      </div>
+    </div>
+    <div class="goal-sub" id="goalSub"></div>
+  </div>
+
+  <div class="cards" id="cardsRow"></div>
+
+  <div id="categoriesContainer"></div>
+
+  <footer>
+    🤙 Montos en pesos chilenos (CLP) — todo se guarda en la nube y se sincroniza entre ambos 🌊
+  </footer>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDOdxEOHg45j9fQz7tiU9yWKDGcETwrkMk",
+  authDomain: "patrimoniogonzalezcilveti.firebaseapp.com",
+  projectId: "patrimoniogonzalezcilveti",
+  storageBucket: "patrimoniogonzalezcilveti.firebasestorage.app",
+  messagingSenderId: "540210259673",
+  appId: "1:540210259673:web:b875eb3be587a27ccfc0c8",
+  measurementId: "G-7MRJQCT27R"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+const docRef = doc(db, 'patrimonio', 'shared');
+let unsubscribeSnapshot = null;
+
+const ICONS = {
+  fondos: '💰',
+  inmobiliaria: '🏠',
+  cxc: '🤝',
+  cajachica: '👛'
+};
+function iconFor(cat){ return ICONS[cat.id] || '💼'; }
+
+const DEFAULT_DATA = {
+  title: '🏄 Patrimonio Familiar 🤙',
+  lastUpdated: null,
+  goal: 300000000,
+  categories: [
+    {
+      id: 'fondos',
+      name: 'Fondos Mutuos',
+      color: '#0891b2',
+      columns: ['Fondo / Institución', 'Notas'],
+      items: [
+        { cols: ['', ''], amount: 0 }
+      ]
+    },
+    {
+      id: 'inmobiliaria',
+      name: 'Inversión Inmobiliaria',
+      color: '#ff6f5e',
+      columns: ['Propiedad / Dirección', 'Notas'],
+      items: [
+        { cols: ['', ''], amount: 0 }
+      ]
+    },
+    {
+      id: 'cxc',
+      name: 'Cuentas por Cobrar',
+      color: '#ffca3a',
+      columns: ['Quién debe', 'Notas'],
+      items: [
+        { cols: ['', ''], amount: 0 }
+      ]
+    },
+    {
+      id: 'cajachica',
+      name: 'Caja Chica',
+      color: '#2ec4b6',
+      columns: ['Descripción / Lugar', 'Notas'],
+      items: [
+        { cols: ['', ''], amount: 0 }
+      ]
+    }
+  ]
+};
+
+let data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+let pieChart = null;
+let saveTimeout = null;
+let hasRenderedOnce = false;
+let wasGoalReached = false;
+let suppressNextSave = false;
+
+async function persistData(){
+  data.lastUpdated = new Date().toISOString();
+  try{
+    await setDoc(docRef, data);
+  }catch(e){
+    console.error('No se pudo guardar en Firestore', e);
+  }
+}
+
+function fmtCLP(n){
+  const num = Math.round(Number(n)||0);
+  return '$' + num.toLocaleString('es-CL');
+}
+
+function parseAmount(str){
+  if(typeof str === 'number') return str;
+  const cleaned = String(str).replace(/[^0-9-]/g,'');
+  return cleaned ? parseInt(cleaned,10) : 0;
+}
+
+function scheduleSave(){
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async ()=>{
+    suppressNextSave = true;
+    await persistData();
+    render(false);
+  }, 300);
+}
+
+function categoryTotal(cat){
+  return cat.items.reduce((s,it)=>s + (parseAmount(it.amount)||0), 0);
+}
+
+function grandTotal(){
+  return data.categories.reduce((s,c)=>s+categoryTotal(c),0);
+}
+
+function launchConfetti(){
+  const emojis = ['🤙','🏄','🌺','🎉','🐚','⭐','🎊'];
+  const count = 40;
+  for(let i=0;i<count;i++){
+    const el = document.createElement('div');
+    el.className = 'confetti-piece';
+    el.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+    el.style.left = Math.random()*100 + 'vw';
+    el.style.fontSize = (16 + Math.random()*18) + 'px';
+    const duration = 2.2 + Math.random()*1.8;
+    el.style.animationDuration = duration + 's';
+    el.style.animationDelay = (Math.random()*0.6) + 's';
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), (duration+1)*1000);
+  }
+}
+
+function render(rebuildChart=true){
+  document.getElementById('appTitle').textContent = data.title || '🏄 Patrimonio Familiar 🤙';
+
+  const total = grandTotal();
+  document.getElementById('grandTotal').textContent = fmtCLP(total);
+
+  const lu = document.getElementById('lastUpdated');
+  if(data.lastUpdated){
+    const d = new Date(data.lastUpdated);
+    lu.textContent = 'Última actualización: ' + d.toLocaleString('es-CL');
+  } else {
+    lu.textContent = 'Sin actualizaciones aún';
+  }
+
+  // Meta / progreso
+  const goal = data.goal || 0;
+  const goalAmountEl = document.getElementById('goalAmount');
+  if(document.activeElement !== goalAmountEl){
+    goalAmountEl.textContent = fmtCLP(goal);
+  }
+  const rawPct = goal > 0 ? (total/goal)*100 : 0;
+  const fillPct = Math.max(0, Math.min(100, rawPct));
+  document.getElementById('goalFill').style.width = fillPct + '%';
+  document.getElementById('goalBoat').style.left = fillPct + '%';
+  document.getElementById('goalPct').textContent = rawPct.toFixed(1) + '%';
+  const goalSub = document.getElementById('goalSub');
+  const reachedNow = goal > 0 && total >= goal;
+  if(reachedNow){
+    goalSub.textContent = '¡Se mandaron la ola de sus vidas! 🤙🌺 Llevan ' + fmtCLP(total - goal) + ' por sobre la meta.';
+    goalSub.classList.add('reached');
+  } else {
+    goalSub.textContent = 'Faltan ' + fmtCLP(Math.max(0, goal - total)) + ' para agarrar la ola grande 🌊';
+    goalSub.classList.remove('reached');
+  }
+  if(reachedNow && !wasGoalReached && hasRenderedOnce){ launchConfetti(); }
+  wasGoalReached = reachedNow;
+
+  // Cards
+  const cardsRow = document.getElementById('cardsRow');
+  cardsRow.innerHTML = '';
+  data.categories.forEach(cat=>{
+    const ct = categoryTotal(cat);
+    const pct = total>0 ? ((ct/total)*100).toFixed(1) : '0.0';
+    const card = document.createElement('div');
+    card.className='card';
+    card.innerHTML = `
+      <div class="name"><span class="icon-badge" style="background:${cat.color}22;">${iconFor(cat)}</span>${cat.name}</div>
+      <div class="amount">${fmtCLP(ct)}</div>
+      <div class="pct">${pct}% del total</div>
+    `;
+    cardsRow.appendChild(card);
+  });
+
+  // Categories tables
+  const container = document.getElementById('categoriesContainer');
+  container.innerHTML = '';
+  data.categories.forEach((cat, catIdx)=>{
+    const section = document.createElement('section');
+    section.className='category';
+
+    const header = document.createElement('div');
+    header.className='cat-header';
+    header.innerHTML = `
+      <div class="cat-title"><span class="icon-badge" style="background:${cat.color}22;">${iconFor(cat)}</span>${cat.name}</div>
+      <div class="cat-total">${fmtCLP(categoryTotal(cat))}</div>
+    `;
+    section.appendChild(header);
+
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th>${cat.columns[0]}</th>
+      <th>${cat.columns[1]}</th>
+      <th style="text-align:right;">Monto (CLP)</th>
+      <th></th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    cat.items.forEach((item, itemIdx)=>{
+      const tr = document.createElement('tr');
+
+      const td1 = document.createElement('td');
+      td1.setAttribute('data-label', cat.columns[0]);
+      const in1 = document.createElement('input');
+      in1.type='text'; in1.value = item.cols[0]||'';
+      in1.addEventListener('input', e=>{ item.cols[0]=e.target.value; scheduleSaveQuiet(); });
+      td1.appendChild(in1);
+
+      const td2 = document.createElement('td');
+      td2.setAttribute('data-label', cat.columns[1]);
+      const in2 = document.createElement('input');
+      in2.type='text'; in2.value = item.cols[1]||'';
+      in2.addEventListener('input', e=>{ item.cols[1]=e.target.value; scheduleSaveQuiet(); });
+      td2.appendChild(in2);
+
+      const td3 = document.createElement('td');
+      td3.setAttribute('data-label', 'Monto (CLP)');
+      td3.className='amount-cell';
+      const in3 = document.createElement('input');
+      in3.type='text'; in3.className='amount-input';
+      in3.value = item.amount ? item.amount.toLocaleString('es-CL') : '';
+      in3.placeholder='0';
+      in3.addEventListener('input', e=>{
+        item.amount = parseAmount(e.target.value);
+        scheduleSave();
+      });
+      in3.addEventListener('blur', e=>{
+        e.target.value = item.amount ? item.amount.toLocaleString('es-CL') : '';
+      });
+      td3.appendChild(in3);
+
+      const td4 = document.createElement('td');
+      td4.className='del-cell';
+      const delBtn = document.createElement('button');
+      delBtn.className='danger-btn';
+      delBtn.textContent='✕';
+      delBtn.title='Eliminar fila';
+      delBtn.addEventListener('click', ()=>{
+        cat.items.splice(itemIdx,1);
+        if(cat.items.length===0){ cat.items.push({cols:['',''],amount:0}); }
+        scheduleSave();
+        render();
+      });
+      td4.appendChild(delBtn);
+
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+
+    const addRow = document.createElement('div');
+    addRow.className='add-row';
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+ Agregar ítem a ' + cat.name + ' 🤙';
+    addBtn.addEventListener('click', ()=>{
+      cat.items.push({cols:['',''],amount:0});
+      scheduleSave();
+      render();
+    });
+    addRow.appendChild(addBtn);
+    section.appendChild(addRow);
+
+    container.appendChild(section);
+  });
+
+  if(rebuildChart) buildChart();
+  else updateChart();
+
+  hasRenderedOnce = true;
+}
+
+// lighter-weight save for text fields (no full re-render needed immediately)
+function scheduleSaveQuiet(){
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async ()=>{
+    suppressNextSave = true;
+    await persistData();
+    const lu = document.getElementById('lastUpdated');
+    const d = new Date(data.lastUpdated);
+    lu.textContent = 'Última actualización: ' + d.toLocaleString('es-CL');
+  }, 400);
+}
+
+function buildChart(){
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  const labels = data.categories.map(c=>c.name);
+  const values = data.categories.map(c=>categoryTotal(c));
+  const colors = data.categories.map(c=>c.color);
+
+  if(pieChart) pieChart.destroy();
+  pieChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels,
+      datasets:[{ data: values, backgroundColor: colors, borderWidth:0 }]
+    },
+    options:{
+      cutout:'62%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          callbacks:{
+            label: (c)=> c.label + ': ' + fmtCLP(c.raw)
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateChart(){
+  if(!pieChart) return buildChart();
+  pieChart.data.labels = data.categories.map(c=>c.name);
+  pieChart.data.datasets[0].data = data.categories.map(c=>categoryTotal(c));
+  pieChart.update();
+}
+
+// Title editing
+document.getElementById('appTitle').addEventListener('input', e=>{
+  data.title = e.target.textContent;
+  scheduleSaveQuiet();
+});
+
+// Goal editing
+const goalAmountEl = document.getElementById('goalAmount');
+goalAmountEl.addEventListener('blur', e=>{
+  const val = parseAmount(e.target.textContent);
+  data.goal = val > 0 ? val : DEFAULT_DATA.goal;
+  scheduleSave();
+  render();
+});
+goalAmountEl.addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){ e.preventDefault(); e.target.blur(); }
+});
+
+// ---------- Autenticación y datos en la nube ----------
+const authOverlay = document.getElementById('authOverlay');
+const authLoading = document.getElementById('authLoading');
+const authBox = document.getElementById('authBox');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const authError = document.getElementById('authError');
+const mainApp = document.getElementById('mainApp');
+
+async function doLogin(){
+  authError.textContent = '';
+  const email = authEmail.value.trim();
+  const pass = authPassword.value;
+  if(!email || !pass){ authError.textContent = 'Completa email y clave.'; return; }
+  try{
+    await signInWithEmailAndPassword(auth, email, pass);
+  }catch(e){
+    authError.textContent = 'No pudimos entrar: revisa tu email y clave.';
+  }
+}
+document.getElementById('authLoginBtn').addEventListener('click', doLogin);
+authPassword.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+authEmail.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+
+document.getElementById('logoutBtn').addEventListener('click', ()=>{ signOut(auth); });
+
+onAuthStateChanged(auth, async (user)=>{
+  if(unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+
+  if(!user){
+    mainApp.style.display = 'none';
+    authOverlay.style.display = 'flex';
+    authLoading.style.display = 'none';
+    authBox.style.display = 'block';
+    return;
+  }
+
+  authOverlay.style.display = 'none';
+  mainApp.style.display = 'block';
+  hasRenderedOnce = false;
+
+  const dataError = document.getElementById('dataError');
+  function showDataError(e){
+    console.error(e);
+    const code = e && e.code ? e.code : '';
+    let msg = 'No pudimos cargar los datos desde la nube.';
+    if(code === 'permission-denied'){
+      msg = 'Firestore rechazó el acceso (permission-denied). Revisa que hayas publicado las reglas de seguridad en Firestore → Rules.';
+    }
+    dataError.textContent = '⚠️ ' + msg;
+    dataError.style.display = 'block';
+  }
+
+  // Si el documento no existe todavía, lo creamos con los datos por defecto
+  try{
+    const snap = await getDoc(docRef);
+    if(!snap.exists()){
+      await setDoc(docRef, DEFAULT_DATA);
+    }
+    dataError.style.display = 'none';
+  }catch(e){
+    showDataError(e);
+  }
+
+  unsubscribeSnapshot = onSnapshot(docRef, (snap)=>{
+    dataError.style.display = 'none';
+    if(!snap.exists()) return;
+    if(suppressNextSave){ suppressNextSave = false; }
+    data = snap.data();
+    if(!data.goal) data.goal = DEFAULT_DATA.goal;
+    render();
+  }, (err)=>{
+    showDataError(err);
+  });
+});
+</script>
+</body>
+</html>
