@@ -397,6 +397,54 @@
     .lifering{align-self:center;}
     th:nth-child(3), td:nth-child(3){display:none;}
   }
+
+  .auth-overlay{
+    position:fixed;
+    inset:0;
+    z-index:1000;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  .auth-box{
+    background:var(--card);
+    border:2px solid var(--border);
+    border-radius:24px;
+    padding:32px;
+    width:100%;
+    max-width:340px;
+    text-align:center;
+    box-shadow:var(--shadow);
+    position:relative;
+    z-index:1;
+  }
+  .auth-box h2{margin:0 0 4px 0;font-size:20px;color:var(--ocean);}
+  .auth-box p{color:var(--muted);font-size:13px;margin:0 0 18px 0;font-weight:600;}
+  .auth-box input{
+    width:100%;
+    background:#fff8e6;
+    border:2px solid var(--border);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:10px;
+    font-size:14px;
+    font-family:'Nunito',sans-serif;
+    margin-bottom:10px;
+  }
+  .auth-box input:focus{outline:none;border-color:var(--ocean-light);}
+  .auth-box button.primary{
+    width:100%;
+    padding:10px;
+    margin-top:4px;
+    background:linear-gradient(90deg,var(--hibiscus),var(--coral));
+    color:#fff;
+    border:none;
+  }
+  .auth-error{color:var(--coral);font-size:12px;min-height:16px;margin-top:10px;font-weight:700;}
+  .auth-loading{color:#fff;font-weight:800;font-size:16px;text-shadow:0 2px 6px rgba(0,0,0,0.3);}
+  #logoutBtn{margin-left:auto;}
+  .header-top{display:flex; align-items:flex-start; justify-content:space-between; width:100%; gap:12px;}
 </style>
 </head>
 <body>
@@ -416,14 +464,31 @@
   </svg>
 </div>
 
-<div class="wrap" id="mainApp">
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-loading" id="authLoading">Cargando... 🌊</div>
+  <div class="auth-box" id="authBox" style="display:none;">
+    <h2>🏄 ¡Hola de nuevo!</h2>
+    <p>Entra con tu cuenta para ver el patrimonio</p>
+    <input type="email" id="authEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="authPassword" placeholder="Clave" autocomplete="current-password">
+    <button class="primary" id="authLoginBtn">Entrar</button>
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
+<div class="wrap" id="mainApp" style="display:none;">
 
   <header>
-    <div>
-      <h1 id="appTitle" contenteditable="true" spellcheck="false">🏄 Patrimonio Familiar 🤙</h1>
-      <div class="subtitle">Rema fuerte — toca cualquier campo para editarlo ✍️, se guarda solo 🌊</div>
+    <div class="header-top">
+      <div>
+        <h1 id="appTitle" contenteditable="true" spellcheck="false">🏄 Patrimonio Familiar 🤙</h1>
+        <div class="subtitle">Rema fuerte — toca cualquier campo para editarlo ✍️, se guarda solo 🌊</div>
+      </div>
+      <button id="logoutBtn">Cerrar sesión</button>
     </div>
   </header>
+
+  <div id="dataError" style="display:none; background:#fff0ee; border:2px solid var(--coral); color:#8a2b23; border-radius:14px; padding:12px 16px; margin-bottom:16px; font-weight:700; font-size:13px;"></div>
 
   <div class="hero">
     <div class="hero-total">
@@ -459,12 +524,34 @@
   <div id="categoriesContainer"></div>
 
   <footer>
-    🤙 Montos en pesos chilenos (CLP) — todo queda guardado en la tabla de este navegador 🌊
+    🤙 Montos en pesos chilenos (CLP) — todo se guarda en la nube y se sincroniza entre ambos 🌊
   </footer>
 </div>
 
-<script>
-const STORAGE_KEY = 'patrimonioFamiliarData_v1';
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDOdxEOHg45j9fQz7tiU9yWKDGcETwrkMk",
+  authDomain: "patrimoniogonzalezcilveti.firebaseapp.com",
+  projectId: "patrimoniogonzalezcilveti",
+  storageBucket: "patrimoniogonzalezcilveti.firebasestorage.app",
+  messagingSenderId: "540210259673",
+  appId: "1:540210259673:web:b875eb3be587a27ccfc0c8",
+  measurementId: "G-7MRJQCT27R"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+const docRef = doc(db, 'patrimonio', 'shared');
+let unsubscribeSnapshot = null;
 
 const ICONS = {
   fondos: '💰',
@@ -518,25 +605,21 @@ const DEFAULT_DATA = {
   ]
 };
 
-function loadData(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){
-      const parsed = JSON.parse(raw);
-      if(parsed && parsed.categories){
-        if(!parsed.goal) parsed.goal = DEFAULT_DATA.goal;
-        return parsed;
-      }
-    }
-  }catch(e){ console.warn('No se pudo leer localStorage', e); }
-  return JSON.parse(JSON.stringify(DEFAULT_DATA));
-}
-
-let data = loadData();
+let data = JSON.parse(JSON.stringify(DEFAULT_DATA));
 let pieChart = null;
 let saveTimeout = null;
 let hasRenderedOnce = false;
 let wasGoalReached = false;
+let suppressNextSave = false;
+
+async function persistData(){
+  data.lastUpdated = new Date().toISOString();
+  try{
+    await setDoc(docRef, data);
+  }catch(e){
+    console.error('No se pudo guardar en Firestore', e);
+  }
+}
 
 function fmtCLP(n){
   const num = Math.round(Number(n)||0);
@@ -551,9 +634,9 @@ function parseAmount(str){
 
 function scheduleSave(){
   clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(()=>{
-    data.lastUpdated = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  saveTimeout = setTimeout(async ()=>{
+    suppressNextSave = true;
+    await persistData();
     render(false);
   }, 300);
 }
@@ -736,9 +819,9 @@ function render(rebuildChart=true){
 // lighter-weight save for text fields (no full re-render needed immediately)
 function scheduleSaveQuiet(){
   clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(()=>{
-    data.lastUpdated = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  saveTimeout = setTimeout(async ()=>{
+    suppressNextSave = true;
+    await persistData();
     const lu = document.getElementById('lastUpdated');
     const d = new Date(data.lastUpdated);
     lu.textContent = 'Última actualización: ' + d.toLocaleString('es-CL');
@@ -797,7 +880,81 @@ goalAmountEl.addEventListener('keydown', e=>{
   if(e.key === 'Enter'){ e.preventDefault(); e.target.blur(); }
 });
 
-render();
+// ---------- Autenticación y datos en la nube ----------
+const authOverlay = document.getElementById('authOverlay');
+const authLoading = document.getElementById('authLoading');
+const authBox = document.getElementById('authBox');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const authError = document.getElementById('authError');
+const mainApp = document.getElementById('mainApp');
+
+async function doLogin(){
+  authError.textContent = '';
+  const email = authEmail.value.trim();
+  const pass = authPassword.value;
+  if(!email || !pass){ authError.textContent = 'Completa email y clave.'; return; }
+  try{
+    await signInWithEmailAndPassword(auth, email, pass);
+  }catch(e){
+    authError.textContent = 'No pudimos entrar: revisa tu email y clave.';
+  }
+}
+document.getElementById('authLoginBtn').addEventListener('click', doLogin);
+authPassword.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+authEmail.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+
+document.getElementById('logoutBtn').addEventListener('click', ()=>{ signOut(auth); });
+
+onAuthStateChanged(auth, async (user)=>{
+  if(unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+
+  if(!user){
+    mainApp.style.display = 'none';
+    authOverlay.style.display = 'flex';
+    authLoading.style.display = 'none';
+    authBox.style.display = 'block';
+    return;
+  }
+
+  authOverlay.style.display = 'none';
+  mainApp.style.display = 'block';
+  hasRenderedOnce = false;
+
+  const dataError = document.getElementById('dataError');
+  function showDataError(e){
+    console.error(e);
+    const code = e && e.code ? e.code : '';
+    let msg = 'No pudimos cargar los datos desde la nube.';
+    if(code === 'permission-denied'){
+      msg = 'Firestore rechazó el acceso (permission-denied). Revisa que hayas publicado las reglas de seguridad en Firestore → Rules.';
+    }
+    dataError.textContent = '⚠️ ' + msg;
+    dataError.style.display = 'block';
+  }
+
+  // Si el documento no existe todavía, lo creamos con los datos por defecto
+  try{
+    const snap = await getDoc(docRef);
+    if(!snap.exists()){
+      await setDoc(docRef, DEFAULT_DATA);
+    }
+    dataError.style.display = 'none';
+  }catch(e){
+    showDataError(e);
+  }
+
+  unsubscribeSnapshot = onSnapshot(docRef, (snap)=>{
+    dataError.style.display = 'none';
+    if(!snap.exists()) return;
+    if(suppressNextSave){ suppressNextSave = false; }
+    data = snap.data();
+    if(!data.goal) data.goal = DEFAULT_DATA.goal;
+    render();
+  }, (err)=>{
+    showDataError(err);
+  });
+});
 </script>
 </body>
 </html>
